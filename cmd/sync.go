@@ -36,6 +36,9 @@ var syncCmd = &cobra.Command{
 			fmt.Printf(", %d conflict(s) left unresolved", sum.SkippedConflicts)
 		}
 		fmt.Println()
+		for _, id := range sum.RemoteDeletions {
+			fmt.Printf("deleted locally (remote deletion): %s\n", id)
+		}
 		if sum.SnapshotDir != "" {
 			fmt.Println("pre-apply snapshot:", sum.SnapshotDir)
 		}

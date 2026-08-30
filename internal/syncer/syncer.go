@@ -54,6 +54,7 @@ type Summary struct {
 	Warnings                                    []string
 	SnapshotDir                                 string
 	UpToDate                                    bool
+	RemoteDeletions                             []item.ID
 }
 
 func (s *Syncer) Run(resolve Resolver) (*Summary, error) {
@@ -127,6 +128,7 @@ func (s *Syncer) runOnce(resolve Resolver) (*Summary, error) {
 			sum.Pushed++
 		case plan.ActDeleteLocal:
 			sum.DeletedLocal++
+			sum.RemoteDeletions = append(sum.RemoteDeletions, c.Result.ID)
 		case plan.ActDeleteRemote:
 			sum.DeletedRemote++
 		}

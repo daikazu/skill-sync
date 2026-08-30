@@ -183,3 +183,56 @@ func TestInitAdoptsRemoteOnFreshMachine(t *testing.T) {
 		t.Fatalf("fresh machine must adopt remote: %+v", sum)
 	}
 }
+
+func TestRemoteDeletionListedInSummary(t *testing.T) {
+	origin := bare(t)
+	a := newDevice(t, origin)
+	writeSkill(t, a.claude, "demo", "v1")
+	sum, err := a.s.Run(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Pushed == 0 {
+		t.Fatalf("device A should push new skill: %+v", sum)
+	}
+
+	b := newDevice(t, origin)
+	if _, err := b.s.Run(nil); err != nil {
+		t.Fatal(err)
+	}
+	if readSkill(t, b.claude, "demo") != "v1" {
+		t.Fatal("device B should receive skill")
+	}
+
+	// A deletes the skill
+	if err := os.RemoveAll(filepath.Join(a.claude, "skills", "demo")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.s.Run(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// B syncs and should see the remote deletion
+	sum, err = b.s.Run(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.DeletedLocal != 1 {
+		t.Fatalf("want 1 deleted local: %+v", sum)
+	}
+	if len(sum.RemoteDeletions) != 1 {
+		t.Fatalf("want 1 remote deletion in summary: %+v", sum)
+	}
+	skillID := item.ID("skill/demo")
+	if sum.RemoteDeletions[0] != skillID {
+		t.Fatalf("want remote deletion for skill/demo, got %v: %+v", sum.RemoteDeletions[0], sum)
+	}
+	// Verify the skill dir is actually gone from B's claude dir
+	_, err = os.Stat(filepath.Join(b.claude, "skills", "demo"))
+	if err == nil {
+		t.Fatal("skill directory should be deleted from B's claude dir")
+	}
+	if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
