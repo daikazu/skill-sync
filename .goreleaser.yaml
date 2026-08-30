@@ -1,0 +1,28 @@
+version: 2
+project_name: skill-sync
+
+builds:
+  - main: .
+    binary: skill-sync
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags: ["-s -w -X github.com/daikazu/skill-sync/cmd.version={{.Version}}"]
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+brews:
+  - name: skill-sync
+    repository:
+      owner: daikazu
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/daikazu/skill-sync
+    description: "Sync Claude Code skills, agents, commands, rules, and settings between machines"
+    test: |
+      system "#{bin}/skill-sync --help"
+
+checksum:
+  name_template: checksums.txt

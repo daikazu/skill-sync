@@ -7,9 +7,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// version is set at build time via ldflags:
+// -X github.com/daikazu/skill-sync/cmd.version={{.Version}}
+var version = "dev"
+
 var rootCmd = &cobra.Command{
 	Use:          "skill-sync",
 	Short:        "Sync Claude Code skills, agents, commands, rules, and settings between machines",
+	Version:      version,
 	SilenceUsage: true,
 }
 
