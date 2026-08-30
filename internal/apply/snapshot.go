@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -103,4 +104,22 @@ func Restore(snapshotDir, claudeDir string) error {
 		}
 		return fsutil.CopyFile(p, filepath.Join(claudeDir, rel))
 	})
+}
+
+func ListSnapshots(backupsDir string) ([]string, error) {
+	entries, err := os.ReadDir(backupsDir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	return names, nil
 }

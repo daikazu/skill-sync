@@ -163,3 +163,17 @@ func TestApplyFailureDoesNotRecordBaseHash(t *testing.T) {
 		t.Fatal("base map must not record failed operation")
 	}
 }
+
+func TestListSnapshots(t *testing.T) {
+	backups := filepath.Join(t.TempDir(), "b")
+	names, err := ListSnapshots(backups)
+	if err != nil || len(names) != 0 {
+		t.Fatalf("missing dir: %v %v", names, err)
+	}
+	os.MkdirAll(filepath.Join(backups, "2026-08-30T10-00-00Z"), 0o755)
+	os.MkdirAll(filepath.Join(backups, "2026-08-30T12-00-00Z"), 0o755)
+	names, _ = ListSnapshots(backups)
+	if len(names) != 2 || names[0] != "2026-08-30T12-00-00Z" {
+		t.Fatalf("want newest first: %v", names)
+	}
+}
