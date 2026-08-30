@@ -16,27 +16,30 @@ without ever overwriting anything they've customized themselves.
 brew install daikazu/tap/skill-sync
 ```
 
+Requires `git` on your `PATH` — `skill-sync` shells out to it rather than
+bundling its own git implementation.
+
 ## Quickstart
 
 1. Create a **private** GitHub repo to hold your synced Claude Code config
    (e.g. `claude-sync`). Nothing needs to be in it yet.
-2. On your first machine, point `skill-sync` at it:
+2. On each machine you want synced, run:
 
    ```sh
    skill-sync init git@github.com:you/claude-sync.git
-   ```
-
-   `init` clones the repo. If your local `~/.claude` is empty, everything
-   from the remote is adopted as-is. If it already has content, `init` runs
-   the normal classify/review flow (see below) to reconcile the two.
-3. On every other machine, run the same `init` command, then:
-
-   ```sh
    skill-sync sync
    ```
 
-   whenever you want to push local changes and pull in changes made
-   elsewhere.
+   `init` only clones the repo and saves this machine's config — it doesn't
+   touch your `~/.claude` files by itself (this is exactly what it prints:
+   "run `skill-sync sync` to do the first sync"). The `sync` right after it
+   does the actual reconciling: on your first machine, with nothing in the
+   remote yet, it adopts your existing local content by pushing it up; on
+   every machine after that, it pulls that content down — or, if the local
+   `~/.claude` already has content of its own, runs the normal classify/
+   review flow (see below) to merge the two.
+3. From then on, just run `skill-sync sync` on any machine whenever you
+   want to push local changes and pull in changes made elsewhere.
 
 ## Commands
 
@@ -51,6 +54,7 @@ brew install daikazu/tap/skill-sync
 | `skill-sync install <file.skillpack> [-y]` | Install or upgrade a package (never clobbers items it doesn't own) |
 | `skill-sync uninstall <package-name>` | Remove a package's items — only those still owned and unmodified |
 | `skill-sync packages` | List installed packages and flag any items you've since modified |
+| `skill-sync adopt <item-id>` | Move a package-owned item into your personal sync (ledger only — the file itself isn't touched) |
 | `skill-sync config` | Show current sync configuration |
 | `skill-sync config include-key <settings-key>` | Also sync this `settings.json` key |
 | `skill-sync config exclude-key <settings-key>` | Stop syncing this `settings.json` key |
@@ -116,9 +120,11 @@ if you've since edited one yourself, that shows up as a conflict instead of
 being silently reverted. `skill-sync uninstall` removes only the
 ledger-owned items you haven't touched. Package-owned items are excluded
 from your own personal sync by default, since team distribution and personal
-sync are separate lanes; you can opt a specific item into personal sync if
-you want to keep evolving it yourself. `skill-sync packages` lists what's
-installed and flags anything you've modified since.
+sync are separate lanes; run `skill-sync adopt <item-id>` to move a specific
+item into personal sync if you want to keep evolving it yourself — this only
+edits the ownership ledger, so the item's file on disk is untouched.
+`skill-sync packages` lists what's installed and flags anything you've
+modified since.
 
 ## Releasing
 
