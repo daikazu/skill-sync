@@ -3,6 +3,7 @@
 package syncer
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,7 +59,7 @@ type Summary struct {
 func (s *Syncer) Run(resolve Resolver) (*Summary, error) {
 	for attempt := 0; ; attempt++ {
 		sum, err := s.runOnce(resolve)
-		if err == repo.ErrPushRejected && attempt < 2 {
+		if errors.Is(err, repo.ErrPushRejected) && attempt < 2 {
 			continue // re-pull and re-classify
 		}
 		return sum, err

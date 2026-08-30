@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/daikazu/skill-sync/internal/item"
@@ -122,6 +123,47 @@ func TestUnresolvedConflictLeavesBothSidesUntouched(t *testing.T) {
 	}
 	if readSkill(t, b.claude, "s") != "B" {
 		t.Fatal("unresolved conflict must not modify local")
+	}
+}
+
+// TestRecoversStrandedCommit reproduces a crash between commit and push:
+// a commit exists in the device's local checkout but never reached the
+// remote. Run must push it on the next sync, even though this run's own
+// classification finds nothing new to change.
+func TestRecoversStrandedCommit(t *testing.T) {
+	origin := bare(t)
+	a := newDevice(t, origin)
+	writeSkill(t, a.claude, "s", "v1")
+	if _, err := a.s.Run(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate the crash: commit directly into the repo checkout without
+	// pushing, bypassing Run entirely.
+	const marker = "stranded-commit-marker"
+	gitIn := func(args ...string) {
+		t.Helper()
+		full := append([]string{"-C", a.s.RepoDir()}, args...)
+		if out, err := exec.Command("git", full...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(a.s.RepoDir(), "stranded.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn("add", "-A")
+	gitIn("-c", "user.name=test", "-c", "user.email=test@localhost", "commit", "-m", marker)
+
+	if _, err := a.s.Run(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := exec.Command("git", "-C", origin, "log", "--oneline").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log origin: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), marker) {
+		t.Fatalf("stranded commit did not reach origin:\n%s", out)
 	}
 }
 
