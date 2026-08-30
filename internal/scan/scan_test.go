@@ -112,6 +112,35 @@ func TestSameContentHashesEqualAcrossClaudeAndRepo(t *testing.T) {
 	}
 }
 
+func TestClaudeSkipsUnreadableItemsAndWarns(t *testing.T) {
+	d := mkClaude(t)
+	// Create an unreadable file in the humanizer skill
+	unreadableFile := filepath.Join(d, "skills/humanizer/unreadable.txt")
+	os.WriteFile(unreadableFile, []byte("secret"), 0o644)
+	os.Chmod(unreadableFile, 0o000)
+	t.Cleanup(func() {
+		os.Chmod(unreadableFile, 0o644) // restore before cleanup
+	})
+	m, warns, err := Claude(d, settings.KeyOverrides{})
+	if err != nil {
+		t.Fatalf("unreadable items must not abort scan: %v", err)
+	}
+	if len(warns) == 0 {
+		t.Fatal("expected at least one warning about unreadable item")
+	}
+	// The broken skill should be omitted
+	if _, ok := m[item.ID("skill/humanizer")]; ok {
+		t.Fatal("skill with unreadable file must be skipped")
+	}
+	// But other items should still be scanned
+	if _, ok := m[item.ID("agent/php-pro")]; !ok {
+		t.Fatal("other items must still be scanned despite one failure")
+	}
+	if _, ok := m[item.ID("command/counselors")]; !ok {
+		t.Fatal("commands must still be scanned")
+	}
+}
+
 func keys(m map[item.ID]Scanned) []item.ID {
 	var out []item.ID
 	for k := range m {
