@@ -56,6 +56,21 @@ func TestCloneCommitPushLog(t *testing.T) {
 	}
 }
 
+func TestPullOnFreshEmptyClone(t *testing.T) {
+	origin := bare(t)
+	work := filepath.Join(t.TempDir(), "repo")
+	if err := Clone(origin, work); err != nil {
+		t.Fatal(err)
+	}
+	g := Git{Dir: work}
+	if g.HasCommits() {
+		t.Fatal("fresh clone of empty repo must have no commits")
+	}
+	if err := g.Pull(); err != nil {
+		t.Fatalf("pull on empty repo (no commits anywhere) must succeed, got %v", err)
+	}
+}
+
 func TestPushRejectedAndPullRecovers(t *testing.T) {
 	origin := bare(t)
 	a := filepath.Join(t.TempDir(), "a")

@@ -44,6 +44,56 @@ func TestWriteAndDeleteFileItems(t *testing.T) {
 	}
 }
 
+func TestWriteAndDeleteAgentCommandRulesItems(t *testing.T) {
+	cases := []struct {
+		name string
+		id   item.ID
+		rel  string // expected path under root
+	}{
+		{"agent", item.NewID(item.TypeAgent, "myagent"), filepath.Join("agents", "myagent.md")},
+		{"command", item.NewID(item.TypeCommand, "mycmd"), filepath.Join("commands", "mycmd.md")},
+		{"rules", item.NewID(item.TypeRules, "CLAUDE.md"), filepath.Join("rules", "CLAUDE.md")},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			src := filepath.Join(t.TempDir(), "src.md")
+			if err := os.WriteFile(src, []byte("content-"+c.name), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			root := t.TempDir()
+
+			s := scan.Scanned{ID: c.id, Path: src}
+			if err := WriteItem(root, s); err != nil {
+				t.Fatal(err)
+			}
+			b, err := os.ReadFile(filepath.Join(root, c.rel))
+			if err != nil || string(b) != "content-"+c.name {
+				t.Fatalf("write failed: %v %q", err, b)
+			}
+			if err := DeleteItem(root, c.id); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(filepath.Join(root, c.rel)); err == nil {
+				t.Fatal("delete failed")
+			}
+			if err := DeleteItem(root, c.id); err != nil {
+				t.Fatal("deleting a missing item must be a no-op, got", err)
+			}
+		})
+	}
+}
+
+func TestDeleteValueItemsWhenDocsMissing(t *testing.T) {
+	root := t.TempDir()
+	// settings.json and plugins.json don't exist at all in this root.
+	if err := DeleteItem(root, item.ID("setting/model")); err != nil {
+		t.Fatal("delete of setting with no settings.json must be a no-op, got", err)
+	}
+	if err := DeleteItem(root, item.ID("plugins/enabledPlugins:p@m")); err != nil {
+		t.Fatal("delete of plugin entry with no plugins.json must be a no-op, got", err)
+	}
+}
+
 func TestWriteAndDeleteValueItems(t *testing.T) {
 	root := t.TempDir()
 	err := WriteItem(root, scan.Scanned{ID: item.ID("setting/model"), Value: json.RawMessage(`"opus"`)})
