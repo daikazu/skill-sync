@@ -15,6 +15,7 @@ archives:
 
 brews:
   - name: skill-sync
+    directory: Formula
     repository:
       owner: daikazu
       name: homebrew-tap
