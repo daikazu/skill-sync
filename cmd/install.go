@@ -30,16 +30,28 @@ var installCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		local, warns, err := scan.Claude(flagClaudeDir, settings.KeyOverrides{})
+		led, err := state.LoadLedger(getSyncer().LedgerPath())
+		if err != nil {
+			return err
+		}
+		// A prior install of this same package may have recorded custom
+		// settings keys outside the default shareable allowlist; include
+		// them so the scan can see their current local state (mirrors
+		// Uninstall's same trick).
+		var settingNames []string
+		if old, ok := led.Packages[man.Name]; ok {
+			for id := range old.Items {
+				if id.Type() == item.TypeSetting {
+					settingNames = append(settingNames, id.Name())
+				}
+			}
+		}
+		local, warns, err := scan.Claude(flagClaudeDir, settings.KeyOverrides{Include: settingNames})
 		if err != nil {
 			return err
 		}
 		for _, w := range warns {
 			fmt.Println("warning:", w)
-		}
-		led, err := state.LoadLedger(getSyncer().LedgerPath())
-		if err != nil {
-			return err
 		}
 		ip := pack.BuildInstallPlan(man, contents, local, led, man.Name)
 
@@ -49,9 +61,11 @@ var installCmd = &cobra.Command{
 			if !installYes {
 				opts := []huh.Option[pack.CollisionChoice]{
 					huh.NewOption("skip (keep mine, don't install theirs)", pack.ChoiceSkip),
-					huh.NewOption(fmt.Sprintf("install renamed as %s", pack.RenamedID(id, man.Name)), pack.ChoiceRename),
-					huh.NewOption("replace mine (snapshotted, reversible)", pack.ChoiceReplace),
 				}
+				if pack.CanRename(id) {
+					opts = append(opts, huh.NewOption(fmt.Sprintf("install renamed as %s", pack.RenamedID(id, man.Name)), pack.ChoiceRename))
+				}
+				opts = append(opts, huh.NewOption("replace mine (snapshotted, reversible)", pack.ChoiceReplace))
 				if err := huh.NewSelect[pack.CollisionChoice]().
 					Title(fmt.Sprintf("%s already exists and differs from the package", id)).
 					Options(opts...).Value(&choice).Run(); err != nil {
@@ -77,12 +91,18 @@ var installCmd = &cobra.Command{
 		}
 
 		sum, err := pack.ApplyInstall(flagClaudeDir, filepath.Join(flagClaudeDir, "backups", "skill-sync"),
-			getSyncer().LedgerPath(), man, contents, ip, collisions, modified)
+			getSyncer().LedgerPath(), man, contents, local, ip, collisions, modified)
 		if err != nil {
 			return err
 		}
 		fmt.Printf("%s %s: %d installed, %d upgraded, %d renamed, %d replaced, %d skipped, %d already current\n",
 			man.Name, man.Version, sum.Installed, sum.Upgraded, sum.Renamed, sum.Replaced, sum.Skipped, sum.Current)
+		if sum.Removed > 0 {
+			fmt.Printf("removed %d item(s) dropped by this version\n", sum.Removed)
+		}
+		if sum.KeptDropped > 0 {
+			fmt.Printf("kept %d modified item(s) no longer in package\n", sum.KeptDropped)
+		}
 		if sum.SnapshotDir != "" {
 			fmt.Println("pre-install snapshot:", sum.SnapshotDir)
 		}

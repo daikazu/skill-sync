@@ -30,6 +30,26 @@ func buildPack(t *testing.T, name, version, content string) string {
 	return out
 }
 
+// buildPackNamed is like buildPack but lets the skill directory (and thus
+// the item id) vary, so a later manifest version can legitimately drop the
+// original item.
+func buildPackNamed(t *testing.T, name, version, skillName, content string) string {
+	t.Helper()
+	src := t.TempDir()
+	os.MkdirAll(filepath.Join(src, "skills", skillName), 0o755)
+	os.WriteFile(filepath.Join(src, "skills", skillName, "SKILL.md"), []byte(content), 0o644)
+	items, _, _ := scan.Claude(src, settings.KeyOverrides{})
+	man := Manifest{Name: name, Version: version, Items: map[item.ID]PackItem{}}
+	for id, s := range items {
+		man.Items[id] = PackItem{Hash: s.Hash}
+	}
+	out := filepath.Join(t.TempDir(), name+"-"+skillName+".skillpack")
+	if err := Build(out, man, items); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func env(t *testing.T) (claude, backups, ledgerPath string) {
 	claude = t.TempDir()
 	return claude, filepath.Join(claude, "backups/skill-sync"), filepath.Join(t.TempDir(), "ledger.json")
@@ -45,7 +65,7 @@ func install(t *testing.T, pk, claude, backups, ledgerPath string,
 	local, _, _ := scan.Claude(claude, settings.KeyOverrides{})
 	led, _ := state.LoadLedger(ledgerPath)
 	ip := BuildInstallPlan(man, contents, local, led, man.Name)
-	sum, err := ApplyInstall(claude, backups, ledgerPath, man, contents, ip, col, mod)
+	sum, err := ApplyInstall(claude, backups, ledgerPath, man, contents, local, ip, col, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,5 +159,66 @@ func TestUninstallKeepsModified(t *testing.T) {
 	led, _ := state.LoadLedger(lp)
 	if len(led.Packages) != 0 {
 		t.Fatal("package record must be gone")
+	}
+}
+
+func TestInstallReplaceTransfersOwnership(t *testing.T) {
+	claude, backups, lp := env(t)
+	install(t, buildPack(t, "a", "1.0.0", "va"), claude, backups, lp, nil, nil)
+	pkB := buildPack(t, "b", "1.0.0", "vb")
+	sum := install(t, pkB, claude, backups, lp,
+		map[item.ID]CollisionChoice{"skill/tool": ChoiceReplace}, nil)
+	if sum.Replaced != 1 {
+		t.Fatalf("replace: %+v", sum)
+	}
+	led, _ := state.LoadLedger(lp)
+	owner, _, ok := led.Owner(item.ID("skill/tool"))
+	if !ok || owner != "b" {
+		t.Fatalf("ownership not transferred: owner=%q ok=%v", owner, ok)
+	}
+	if _, stillOwned := led.Packages["a"].Items[item.ID("skill/tool")]; stillOwned {
+		t.Fatal("old package must not still claim ownership after a replace")
+	}
+}
+
+func TestUpgradeDropsRemovedItem(t *testing.T) {
+	claude, backups, lp := env(t)
+	install(t, buildPack(t, "agency", "1.0.0", "v1"), claude, backups, lp, nil, nil)
+
+	v2 := buildPackNamed(t, "agency", "2.0.0", "other", "v2")
+	sum := install(t, v2, claude, backups, lp, nil, nil)
+	if sum.Removed != 1 {
+		t.Fatalf("removed: %+v", sum)
+	}
+	if _, err := os.Stat(filepath.Join(claude, "skills/tool")); err == nil {
+		t.Fatal("item dropped by the new manifest must be deleted when unmodified")
+	}
+	led, _ := state.LoadLedger(lp)
+	rec := led.Packages["agency"]
+	if _, ok := rec.Items[item.ID("skill/tool")]; ok {
+		t.Fatal("dropped item must not remain in the record")
+	}
+	if len(rec.Items) != 1 {
+		t.Fatalf("record should only contain v2's item: %+v", rec.Items)
+	}
+}
+
+func TestUpgradeKeepsModifiedDroppedItem(t *testing.T) {
+	claude, backups, lp := env(t)
+	install(t, buildPack(t, "agency", "1.0.0", "v1"), claude, backups, lp, nil, nil)
+	os.WriteFile(filepath.Join(claude, "skills/tool/SKILL.md"), []byte("my edit"), 0o644)
+
+	v2 := buildPackNamed(t, "agency", "2.0.0", "other", "v2")
+	sum := install(t, v2, claude, backups, lp, nil, nil)
+	if sum.KeptDropped != 1 {
+		t.Fatalf("kept-dropped: %+v", sum)
+	}
+	if b, _ := os.ReadFile(filepath.Join(claude, "skills/tool/SKILL.md")); string(b) != "my edit" {
+		t.Fatal("a modified item dropped by the new manifest must survive on disk")
+	}
+	led, _ := state.LoadLedger(lp)
+	rec := led.Packages["agency"]
+	if _, ok := rec.Items[item.ID("skill/tool")]; ok {
+		t.Fatal("dropped item must not remain in the record even when kept on disk")
 	}
 }

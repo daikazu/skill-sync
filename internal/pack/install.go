@@ -63,18 +63,32 @@ func RenamedID(id item.ID, pkgName string) item.ID {
 	return item.NewID(id.Type(), id.Name()+"-"+pkgName)
 }
 
-func canRename(id item.ID) bool {
+// CanRename reports whether an item's type participates in collision
+// renaming; value items (settings/plugins/rules) never rename.
+func CanRename(id item.ID) bool {
 	t := id.Type()
 	return t == item.TypeSkill || t == item.TypeAgent || t == item.TypeCommand
 }
 
 type InstallSummary struct {
-	Installed, Upgraded, Renamed, Replaced, Skipped, Current int
-	SnapshotDir                                              string
+	Installed, Upgraded, Renamed, Replaced, Skipped, Current, Removed, KeptDropped int
+	SnapshotDir                                                                    string
+}
+
+// releaseOwnership removes id from every package record other than
+// exceptPkg, so ownership of any given item stays exclusive to a single
+// package and led.Owner never has to arbitrate between two claimants.
+func releaseOwnership(led *state.Ledger, id item.ID, exceptPkg string) {
+	for name, rec := range led.Packages {
+		if name == exceptPkg {
+			continue
+		}
+		delete(rec.Items, id)
+	}
 }
 
 func ApplyInstall(claudeDir, backupsDir, ledgerPath string, man *Manifest,
-	contents map[item.ID]scan.Scanned, ip InstallPlan,
+	contents, local map[item.ID]scan.Scanned, ip InstallPlan,
 	collisions map[item.ID]CollisionChoice, modified map[item.ID]ModifiedChoice,
 ) (*InstallSummary, error) {
 	sum := &InstallSummary{Current: len(ip.AlreadyCurrent)}
@@ -82,12 +96,8 @@ func ApplyInstall(claudeDir, backupsDir, ledgerPath string, man *Manifest,
 	if err != nil {
 		return nil, err
 	}
+	old := led.Packages[man.Name] // zero value if this package was never installed before
 	rec := state.PackageRecord{Version: man.Version, Items: map[item.ID]string{}}
-	if old, ok := led.Packages[man.Name]; ok {
-		for id, h := range old.Items {
-			rec.Items[id] = h // carry forward; overwritten below where reinstalled
-		}
-	}
 
 	// synthetic pull changes against the pack contents
 	var changes []plan.Change
@@ -100,6 +110,7 @@ func ApplyInstall(claudeDir, backupsDir, ledgerPath string, man *Manifest,
 			Action: plan.ActPull,
 		})
 		rec.Items[targetID] = src.Hash
+		releaseOwnership(led, targetID, man.Name)
 	}
 
 	for _, id := range ip.Fresh {
@@ -108,6 +119,7 @@ func ApplyInstall(claudeDir, backupsDir, ledgerPath string, man *Manifest,
 	}
 	for _, id := range ip.AlreadyCurrent {
 		rec.Items[id] = contents[id].Hash
+		releaseOwnership(led, id, man.Name)
 	}
 	for _, id := range ip.Upgrade {
 		pull(id, contents[id])
@@ -118,12 +130,13 @@ func ApplyInstall(claudeDir, backupsDir, ledgerPath string, man *Manifest,
 			pull(id, contents[id])
 			sum.Upgraded++
 		} else {
-			sum.Skipped++ // keep-local: ledger keeps the old installed hash
+			rec.Items[id] = old.Items[id] // keep-local: ledger keeps the old installed hash
+			sum.Skipped++
 		}
 	}
 	for _, id := range ip.Collisions {
 		choice := collisions[id]
-		if choice == ChoiceRename && !canRename(id) {
+		if choice == ChoiceRename && !CanRename(id) {
 			choice = ChoiceSkip
 		}
 		switch choice {
@@ -138,7 +151,29 @@ func ApplyInstall(claudeDir, backupsDir, ledgerPath string, man *Manifest,
 		}
 	}
 
-	// snapshot everything the pulls will touch
+	// Items this package used to own that the new manifest no longer lists:
+	// drop them from the record. Only delete the local copy when the user
+	// never touched it; a modified or already-missing item is left alone.
+	for id, oldHash := range old.Items {
+		if _, stillListed := man.Items[id]; stillListed {
+			continue
+		}
+		loc, present := local[id]
+		switch {
+		case !present:
+			sum.Removed++ // already gone
+		case loc.Hash == oldHash:
+			changes = append(changes, plan.Change{
+				Result: classify.Result{ID: id, State: classify.DeletedRemote},
+				Action: plan.ActDeleteLocal,
+			})
+			sum.Removed++
+		default:
+			sum.KeptDropped++ // user modified it; leave it on disk, untracked
+		}
+	}
+
+	// snapshot everything the pulls/deletes will touch
 	var rels []string
 	needSettings := false
 	for _, c := range changes {
