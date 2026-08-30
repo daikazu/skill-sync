@@ -72,24 +72,36 @@ type KeyOverrides struct {
 	Exclude []string
 }
 
-func ShareableKeys(d *Doc, o KeyOverrides) []string {
-	allowed := map[string]bool{}
+// KeyAllowed reports whether a settings key participates in syncing
+// under the given overrides: DefaultShareable ∪ Include − Exclude.
+// Plugin keys are handled as plugins items, never as settings.
+func KeyAllowed(key string, o KeyOverrides) bool {
+	if key == KeyEnabledPlugins || key == KeyExtraMarketplaces {
+		return false
+	}
+	allowed := false
 	for _, k := range DefaultShareable {
-		allowed[k] = true
+		if k == key {
+			allowed = true
+		}
 	}
 	for _, k := range o.Include {
-		allowed[k] = true
+		if k == key {
+			allowed = true
+		}
 	}
 	for _, k := range o.Exclude {
-		delete(allowed, k)
+		if k == key {
+			allowed = false
+		}
 	}
-	// plugin keys are handled as plugins items, never as settings
-	delete(allowed, KeyEnabledPlugins)
-	delete(allowed, KeyExtraMarketplaces)
+	return allowed
+}
 
+func ShareableKeys(d *Doc, o KeyOverrides) []string {
 	var out []string
 	for k := range d.m {
-		if allowed[k] {
+		if KeyAllowed(k, o) {
 			out = append(out, k)
 		}
 	}

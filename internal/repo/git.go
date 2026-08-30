@@ -3,6 +3,7 @@ package repo
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -102,6 +103,10 @@ func gitRun(dir string, args ...string) (string, error) {
 	if dir != "" {
 		cmd.Dir = dir
 	}
+	// Force English output so the substring checks for push rejection and
+	// empty-remote work on every locale, and fail fast instead of hanging
+	// on an interactive credential prompt.
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("git %s: %w\n%s", args[0], err, out)

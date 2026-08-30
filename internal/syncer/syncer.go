@@ -58,6 +58,11 @@ type Summary struct {
 }
 
 func (s *Syncer) Run(resolve Resolver) (*Summary, error) {
+	if _, err := os.Stat(s.ClaudeDir); err != nil {
+		// An absent claude dir would scan as empty and delete every item
+		// from the repo (and then from every machine). Refuse instead.
+		return nil, fmt.Errorf("claude dir %s does not exist — check --claude-dir", s.ClaudeDir)
+	}
 	for attempt := 0; ; attempt++ {
 		sum, err := s.runOnce(resolve)
 		if errors.Is(err, repo.ErrPushRejected) && attempt < 2 {
@@ -85,17 +90,20 @@ func (s *Syncer) runOnce(resolve Resolver) (*Summary, error) {
 		return nil, err
 	}
 	overrides := settings.KeyOverrides{Include: cfg.IncludeKeys, Exclude: cfg.ExcludeKeys}
-	local, warnsL, err := scan.Claude(s.ClaudeDir, overrides)
+	local, unscanL, warnsL, err := scan.Claude(s.ClaudeDir, overrides)
 	if err != nil {
 		return nil, err
 	}
-	remote, warnsR, err := scan.Repo(s.RepoDir())
+	remote, unscanR, warnsR, err := scan.Repo(s.RepoDir())
 	if err != nil {
 		return nil, err
 	}
+	filterRemoteByAllowlist(remote, overrides)
 	sum := &Summary{Warnings: append(warnsL, warnsR...)}
 
-	results := classify.All(local, remote, dev.LastSynced)
+	results, excludedWarns := excludeUnscannable(
+		classify.All(local, remote, dev.LastSynced), append(unscanL, unscanR...))
+	sum.Warnings = append(sum.Warnings, excludedWarns...)
 	p := plan.Build(results, cfg, ledger)
 	p.Local, p.Remote = local, remote
 	sum.SkippedItems = len(p.Skipped)
@@ -180,8 +188,42 @@ func (s *Syncer) runOnce(resolve Resolver) (*Summary, error) {
 	if err := dev.Save(s.statePath()); err != nil {
 		return sum, err
 	}
-	sum.UpToDate = real == 0
+	sum.UpToDate = real == 0 && sum.SkippedConflicts == 0
 	return sum, nil
+}
+
+// filterRemoteByAllowlist drops repo settings items whose key this
+// device does not sync (default allowlist plus include/exclude
+// overrides). An excluded key means "this machine ignores that key":
+// it must neither pull-overwrite the local device value nor classify
+// as deleted-local and cascade a repo-wide deletion.
+func filterRemoteByAllowlist(remote map[item.ID]scan.Scanned, o settings.KeyOverrides) {
+	for id := range remote {
+		if id.Type() == item.TypeSetting && !settings.KeyAllowed(id.Name(), o) {
+			delete(remote, id)
+		}
+	}
+}
+
+// excludeUnscannable removes every classification result matching the
+// unscannable set, so nothing about such an item is applied, pushed,
+// deleted, or has its base updated. A skipped item must never look
+// deleted (spec: "flagged and skipped; sync continues for everything
+// else").
+func excludeUnscannable(results []classify.Result, unscannable []string) ([]classify.Result, []string) {
+	if len(unscannable) == 0 {
+		return results, nil
+	}
+	kept := results[:0]
+	var warns []string
+	for _, r := range results {
+		if scan.Unscannable(r.ID, unscannable) {
+			warns = append(warns, "excluded from this sync: "+string(r.ID))
+			continue
+		}
+		kept = append(kept, r)
+	}
+	return kept, warns
 }
 
 func (s *Syncer) Status() (*plan.Plan, []string, error) {
@@ -202,17 +244,24 @@ func (s *Syncer) Status() (*plan.Plan, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if _, err := os.Stat(s.ClaudeDir); err != nil {
+		warns = append(warns, fmt.Sprintf("claude dir %s does not exist — check --claude-dir", s.ClaudeDir))
+	}
 	overrides := settings.KeyOverrides{Include: cfg.IncludeKeys, Exclude: cfg.ExcludeKeys}
-	local, wl, err := scan.Claude(s.ClaudeDir, overrides)
+	local, unscanL, wl, err := scan.Claude(s.ClaudeDir, overrides)
 	if err != nil {
 		return nil, nil, err
 	}
-	remote, wr, err := scan.Repo(s.RepoDir())
+	remote, unscanR, wr, err := scan.Repo(s.RepoDir())
 	if err != nil {
 		return nil, nil, err
 	}
+	filterRemoteByAllowlist(remote, overrides)
 	warns = append(warns, append(wl, wr...)...)
-	p := plan.Build(classify.All(local, remote, dev.LastSynced), cfg, ledger)
+	results, excludedWarns := excludeUnscannable(
+		classify.All(local, remote, dev.LastSynced), append(unscanL, unscanR...))
+	warns = append(warns, excludedWarns...)
+	p := plan.Build(results, cfg, ledger)
 	p.Local, p.Remote = local, remote
 	return &p, warns, nil
 }

@@ -77,7 +77,14 @@ const (
 )
 
 func Resolve(p Plan, choices map[item.ID]Resolution) []Change {
-	out := append([]Change{}, p.Auto...)
+	out := make([]Change, 0, len(p.Auto))
+	for _, c := range p.Auto {
+		// an auto change demoted to skip in review is dropped entirely
+		if choices[c.Result.ID] == ResSkip {
+			continue
+		}
+		out = append(out, c)
+	}
 	for _, r := range p.Conflicts {
 		switch choices[r.ID] {
 		case ResLocal:

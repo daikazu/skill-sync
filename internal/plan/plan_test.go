@@ -100,3 +100,20 @@ func TestResolve(t *testing.T) {
 		t.Fatal("unresolved conflict must be omitted")
 	}
 }
+
+func TestResolveDropsDemotedAuto(t *testing.T) {
+	p := Plan{
+		Auto: []Change{
+			{Result: res("agent/keep", classify.Push, "b", "a", "a"), Action: ActPush},
+			{Result: res("skill/demoted", classify.DeletedLocal, "", "a", "a"), Action: ActDeleteRemote},
+		},
+	}
+	got := Resolve(p, map[item.ID]Resolution{"skill/demoted": ResSkip})
+	if len(got) != 1 || got[0].Result.ID != item.ID("agent/keep") {
+		t.Fatalf("demoted auto change must be dropped: %+v", got)
+	}
+	// no choices → both auto changes apply
+	if got := Resolve(p, nil); len(got) != 2 {
+		t.Fatalf("without demotion both auto changes apply: %+v", got)
+	}
+}

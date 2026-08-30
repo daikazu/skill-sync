@@ -118,8 +118,14 @@ func ApplyInstall(claudeDir, backupsDir, ledgerPath string, man *Manifest,
 		sum.Installed++
 	}
 	for _, id := range ip.AlreadyCurrent {
-		rec.Items[id] = contents[id].Hash
-		releaseOwnership(led, id, man.Name)
+		// Only claim identical content that some package already owns
+		// (ownership transfer). Unowned identical content is the user's
+		// personal item: claiming it would silently pull it out of
+		// personal sync.
+		if _, _, owned := led.Owner(id); owned {
+			rec.Items[id] = contents[id].Hash
+			releaseOwnership(led, id, man.Name)
+		}
 	}
 	for _, id := range ip.Upgrade {
 		pull(id, contents[id])
@@ -218,13 +224,18 @@ func Uninstall(claudeDir, backupsDir, ledgerPath, pkgName string) (removed, kept
 			settingNames = append(settingNames, id.Name())
 		}
 	}
-	local, _, err := scan.Claude(claudeDir, settings.KeyOverrides{Include: settingNames})
+	local, unscannable, _, err := scan.Claude(claudeDir, settings.KeyOverrides{Include: settingNames})
 	if err != nil {
 		return nil, nil, err
 	}
 	var changes []plan.Change
 	var rels []string
 	for id, installedHash := range rec.Items {
+		if scan.Unscannable(id, unscannable) {
+			// can't verify it's unmodified, so never delete it
+			kept = append(kept, id)
+			continue
+		}
 		loc, present := local[id]
 		if !present {
 			removed = append(removed, id) // already gone

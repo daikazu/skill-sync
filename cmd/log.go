@@ -12,6 +12,10 @@ var logCmd = &cobra.Command{
 	Short: "Show recent sync history",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		g := repo.Git{Dir: getSyncer().RepoDir()}
+		if !g.HasCommits() {
+			fmt.Println("no syncs yet")
+			return nil
+		}
 		entries, err := g.Log(20)
 		if err != nil {
 			return err

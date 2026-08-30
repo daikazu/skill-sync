@@ -23,7 +23,7 @@ var syncCmd = &cobra.Command{
 				}
 				return nil, true, nil
 			}
-			return tui.RunReview(p.Conflicts, p.Local, p.Remote)
+			return tui.RunReview(p.Conflicts, p.Auto, p.Local, p.Remote)
 		}
 		sum, err := s.Run(resolver)
 		if err != nil {

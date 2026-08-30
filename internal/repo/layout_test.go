@@ -104,7 +104,7 @@ func TestWriteAndDeleteValueItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, _, _ := scan.Repo(root)
+	m, _, _, _ := scan.Repo(root)
 	if _, ok := m[item.ID("setting/model")]; !ok {
 		t.Fatal("setting not written")
 	}
@@ -113,7 +113,7 @@ func TestWriteAndDeleteValueItems(t *testing.T) {
 	}
 	DeleteItem(root, item.ID("setting/model"))
 	DeleteItem(root, item.ID("plugins/enabledPlugins:p@m"))
-	m2, _, _ := scan.Repo(root)
+	m2, _, _, _ := scan.Repo(root)
 	if len(m2) != 0 {
 		t.Fatalf("value items not deleted: %v", m2)
 	}

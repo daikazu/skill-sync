@@ -58,6 +58,31 @@ func TestShareableKeys(t *testing.T) {
 	}
 }
 
+func TestKeyAllowed(t *testing.T) {
+	cases := []struct {
+		key  string
+		o    KeyOverrides
+		want bool
+	}{
+		{"model", KeyOverrides{}, true},
+		{"effortLevel", KeyOverrides{}, true},
+		{"env", KeyOverrides{}, false},
+		{"customThing", KeyOverrides{}, false},
+		{"customThing", KeyOverrides{Include: []string{"customThing"}}, true},
+		{"model", KeyOverrides{Exclude: []string{"model"}}, false},
+		// exclude wins over include
+		{"model", KeyOverrides{Include: []string{"model"}, Exclude: []string{"model"}}, false},
+		// plugin keys are never settings, even when included
+		{KeyEnabledPlugins, KeyOverrides{Include: []string{KeyEnabledPlugins}}, false},
+		{KeyExtraMarketplaces, KeyOverrides{}, false},
+	}
+	for _, c := range cases {
+		if got := KeyAllowed(c.key, c.o); got != c.want {
+			t.Errorf("KeyAllowed(%q, %+v) = %v, want %v", c.key, c.o, got, c.want)
+		}
+	}
+}
+
 func TestPluginEntries(t *testing.T) {
 	p := write(t, `{"enabledPlugins":{"x@m":true,"y@m":false}}`)
 	d, _ := Load(p)

@@ -18,7 +18,7 @@ func fixtureItems(t *testing.T) map[item.ID]scan.Scanned {
 	os.MkdirAll(filepath.Join(d, "skills/demo"), 0o755)
 	os.WriteFile(filepath.Join(d, "skills/demo/SKILL.md"), []byte("demo"), 0o644)
 	os.WriteFile(filepath.Join(d, "settings.json"), []byte(`{"model":"opus"}`), 0o644)
-	m, _, err := scan.Claude(d, settings.KeyOverrides{})
+	m, _, _, err := scan.Claude(d, settings.KeyOverrides{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,6 +131,45 @@ func TestExtractRejectsTraversalDir(t *testing.T) {
 	p := singleEntryPack(t, tar.Header{Name: "../../evil-dir", Mode: 0o755, Typeflag: tar.TypeDir}, nil)
 	if err := Extract(p, t.TempDir()); err == nil {
 		t.Fatal("traversal dir entry must be rejected")
+	}
+}
+
+func TestOpenRejectsHostileManifestFields(t *testing.T) {
+	items := fixtureItems(t)
+	for _, tc := range []struct{ name, version string }{
+		{"/../../../../tmp/evil", "1.0.0"},
+		{"../evil", "1.0.0"},
+		{"", "1.0.0"},
+		{".hidden", "1.0.0"},
+		{"ok-name", "../../v1"},
+		{"ok-name", ""},
+	} {
+		man := Manifest{Name: tc.name, Version: tc.version, Items: map[item.ID]PackItem{}}
+		for id, s := range items {
+			man.Items[id] = PackItem{Hash: s.Hash}
+		}
+		out := filepath.Join(t.TempDir(), "evil.skillpack")
+		if err := Build(out, man, items); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Open(out); err == nil {
+			t.Fatalf("Open must reject name=%q version=%q", tc.name, tc.version)
+		}
+		if _, _, err := Load(out, t.TempDir()); err == nil {
+			t.Fatalf("Load must reject name=%q version=%q", tc.name, tc.version)
+		}
+	}
+	// sane fields still pass
+	man := Manifest{Name: "team.pack_v2-x", Version: "1.0.0", Items: map[item.ID]PackItem{}}
+	for id, s := range items {
+		man.Items[id] = PackItem{Hash: s.Hash}
+	}
+	out := filepath.Join(t.TempDir(), "ok.skillpack")
+	if err := Build(out, man, items); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(out); err != nil {
+		t.Fatalf("valid manifest fields must pass: %v", err)
 	}
 }
 

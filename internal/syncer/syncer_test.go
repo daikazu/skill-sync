@@ -121,6 +121,9 @@ func TestUnresolvedConflictLeavesBothSidesUntouched(t *testing.T) {
 	if sum.SkippedConflicts != 1 {
 		t.Fatalf("want 1 skipped conflict: %+v", sum)
 	}
+	if sum.UpToDate {
+		t.Fatalf("a sync with unresolved conflicts is not up to date: %+v", sum)
+	}
 	if readSkill(t, b.claude, "s") != "B" {
 		t.Fatal("unresolved conflict must not modify local")
 	}

@@ -18,7 +18,7 @@ func buildPack(t *testing.T, name, version, content string) string {
 	src := t.TempDir()
 	os.MkdirAll(filepath.Join(src, "skills/tool"), 0o755)
 	os.WriteFile(filepath.Join(src, "skills/tool/SKILL.md"), []byte(content), 0o644)
-	items, _, _ := scan.Claude(src, settings.KeyOverrides{})
+	items, _, _, _ := scan.Claude(src, settings.KeyOverrides{})
 	man := Manifest{Name: name, Version: version, Items: map[item.ID]PackItem{}}
 	for id, s := range items {
 		man.Items[id] = PackItem{Hash: s.Hash}
@@ -38,7 +38,7 @@ func buildPackNamed(t *testing.T, name, version, skillName, content string) stri
 	src := t.TempDir()
 	os.MkdirAll(filepath.Join(src, "skills", skillName), 0o755)
 	os.WriteFile(filepath.Join(src, "skills", skillName, "SKILL.md"), []byte(content), 0o644)
-	items, _, _ := scan.Claude(src, settings.KeyOverrides{})
+	items, _, _, _ := scan.Claude(src, settings.KeyOverrides{})
 	man := Manifest{Name: name, Version: version, Items: map[item.ID]PackItem{}}
 	for id, s := range items {
 		man.Items[id] = PackItem{Hash: s.Hash}
@@ -62,7 +62,7 @@ func install(t *testing.T, pk, claude, backups, ledgerPath string,
 	if err != nil {
 		t.Fatal(err)
 	}
-	local, _, _ := scan.Claude(claude, settings.KeyOverrides{})
+	local, _, _, _ := scan.Claude(claude, settings.KeyOverrides{})
 	led, _ := state.LoadLedger(ledgerPath)
 	ip := BuildInstallPlan(man, contents, local, led, man.Name)
 	sum, err := ApplyInstall(claude, backups, ledgerPath, man, contents, local, ip, col, mod)
@@ -159,6 +159,40 @@ func TestUninstallKeepsModified(t *testing.T) {
 	led, _ := state.LoadLedger(lp)
 	if len(led.Packages) != 0 {
 		t.Fatal("package record must be gone")
+	}
+}
+
+func TestInstallDoesNotClaimIdenticalUnownedItems(t *testing.T) {
+	claude, backups, lp := env(t)
+	// the user's own personal skill, identical to the pack's content
+	os.MkdirAll(filepath.Join(claude, "skills/tool"), 0o755)
+	os.WriteFile(filepath.Join(claude, "skills/tool/SKILL.md"), []byte("same"), 0o644)
+	pk := buildPack(t, "backup", "1.0.0", "same")
+	sum := install(t, pk, claude, backups, lp, nil, nil)
+	if sum.Current != 1 {
+		t.Fatalf("identical item must count as current: %+v", sum)
+	}
+	led, _ := state.LoadLedger(lp)
+	if _, _, owned := led.Owner(item.ID("skill/tool")); owned {
+		t.Fatal("identical unowned local content must stay personal, not become package-owned")
+	}
+}
+
+func TestInstallAlreadyCurrentTransfersExistingOwnership(t *testing.T) {
+	claude, backups, lp := env(t)
+	install(t, buildPack(t, "a", "1.0.0", "same"), claude, backups, lp, nil, nil)
+	// package b ships identical content for the same item
+	sum := install(t, buildPack(t, "b", "1.0.0", "same"), claude, backups, lp, nil, nil)
+	if sum.Current != 1 {
+		t.Fatalf("identical owned item must count as current: %+v", sum)
+	}
+	led, _ := state.LoadLedger(lp)
+	owner, _, ok := led.Owner(item.ID("skill/tool"))
+	if !ok || owner != "b" {
+		t.Fatalf("already-owned identical item must transfer ownership: owner=%q ok=%v", owner, ok)
+	}
+	if _, still := led.Packages["a"].Items[item.ID("skill/tool")]; still {
+		t.Fatal("previous owner must release the item")
 	}
 }
 

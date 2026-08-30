@@ -25,9 +25,9 @@ func mkClaude(t *testing.T) string {
 }
 
 func TestClaudeInventory(t *testing.T) {
-	m, warns, err := Claude(mkClaude(t), settings.KeyOverrides{})
-	if err != nil || len(warns) != 0 {
-		t.Fatal(err, warns)
+	m, unscannable, warns, err := Claude(mkClaude(t), settings.KeyOverrides{})
+	if err != nil || len(warns) != 0 || len(unscannable) != 0 {
+		t.Fatal(err, warns, unscannable)
 	}
 	for _, want := range []string{
 		"skill/humanizer", "agent/php-pro", "command/counselors",
@@ -50,7 +50,7 @@ func TestClaudeInventory(t *testing.T) {
 }
 
 func TestClaudeEmptyDir(t *testing.T) {
-	m, _, err := Claude(t.TempDir(), settings.KeyOverrides{})
+	m, _, _, err := Claude(t.TempDir(), settings.KeyOverrides{})
 	if err != nil || len(m) != 0 {
 		t.Fatalf("empty dir: %v %v", m, err)
 	}
@@ -59,7 +59,7 @@ func TestClaudeEmptyDir(t *testing.T) {
 func TestClaudeUnparseableSettingsWarnsAndSkips(t *testing.T) {
 	d := mkClaude(t)
 	os.WriteFile(filepath.Join(d, "settings.json"), []byte(`{not json`), 0o644)
-	m, warns, err := Claude(d, settings.KeyOverrides{})
+	m, unscannable, warns, err := Claude(d, settings.KeyOverrides{})
 	if err != nil {
 		t.Fatalf("bad settings must not abort scan: %v", err)
 	}
@@ -72,6 +72,16 @@ func TestClaudeUnparseableSettingsWarnsAndSkips(t *testing.T) {
 	if _, ok := m[item.ID("setting/model")]; ok {
 		t.Fatal("settings items must be skipped when unparseable")
 	}
+	// every setting and plugins item must be flagged unknown, not absent
+	if !Unscannable(item.ID("setting/model"), unscannable) {
+		t.Fatalf("setting/ prefix must be unscannable: %v", unscannable)
+	}
+	if !Unscannable(item.ID("plugins/enabledPlugins:p@m"), unscannable) {
+		t.Fatalf("plugins/ prefix must be unscannable: %v", unscannable)
+	}
+	if Unscannable(item.ID("skill/humanizer"), unscannable) {
+		t.Fatalf("scannable items must not be flagged: %v", unscannable)
+	}
 }
 
 func TestRepoInventory(t *testing.T) {
@@ -83,7 +93,7 @@ func TestRepoInventory(t *testing.T) {
 	os.WriteFile(filepath.Join(d, "settings.json"), []byte(`{"model":"opus"}`), 0o644)
 	os.WriteFile(filepath.Join(d, "plugins.json"),
 		[]byte(`{"enabledPlugins":{"p@m":true},"extraKnownMarketplaces":{}}`), 0o644)
-	m, _, err := Repo(d)
+	m, _, _, err := Repo(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,8 +112,8 @@ func TestSameContentHashesEqualAcrossClaudeAndRepo(t *testing.T) {
 	os.MkdirAll(filepath.Join(r, "skills/humanizer"), 0o755)
 	os.WriteFile(filepath.Join(r, "skills/humanizer/SKILL.md"), []byte("# h"), 0o644)
 	os.WriteFile(filepath.Join(r, "settings.json"), []byte(`{"model": "opus"}`), 0o644)
-	cm, _, _ := Claude(c, settings.KeyOverrides{})
-	rm, _, _ := Repo(r)
+	cm, _, _, _ := Claude(c, settings.KeyOverrides{})
+	rm, _, _, _ := Repo(r)
 	if cm[item.ID("skill/humanizer")].Hash != rm[item.ID("skill/humanizer")].Hash {
 		t.Fatal("identical skill must hash equal in both layouts")
 	}
@@ -121,7 +131,7 @@ func TestClaudeSkipsUnreadableItemsAndWarns(t *testing.T) {
 	t.Cleanup(func() {
 		os.Chmod(unreadableFile, 0o644) // restore before cleanup
 	})
-	m, warns, err := Claude(d, settings.KeyOverrides{})
+	m, unscannable, warns, err := Claude(d, settings.KeyOverrides{})
 	if err != nil {
 		t.Fatalf("unreadable items must not abort scan: %v", err)
 	}
@@ -131,6 +141,14 @@ func TestClaudeSkipsUnreadableItemsAndWarns(t *testing.T) {
 	// The broken skill should be omitted
 	if _, ok := m[item.ID("skill/humanizer")]; ok {
 		t.Fatal("skill with unreadable file must be skipped")
+	}
+	// ... and flagged as unscannable by exact ID, so sync treats it as
+	// unknown rather than deleted
+	if !Unscannable(item.ID("skill/humanizer"), unscannable) {
+		t.Fatalf("broken skill must be in the unscannable set: %v", unscannable)
+	}
+	if Unscannable(item.ID("skill/humanizer2"), unscannable) {
+		t.Fatal("exact-ID entries must not prefix-match sibling items")
 	}
 	// But other items should still be scanned
 	if _, ok := m[item.ID("agent/php-pro")]; !ok {

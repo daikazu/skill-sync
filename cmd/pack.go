@@ -35,7 +35,9 @@ var packCmd = &cobra.Command{
 	Use:   "pack",
 	Short: "Build a .skillpack (backup with --all, or a curated team package)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		items, warns, err := scan.Claude(flagClaudeDir, settings.KeyOverrides{})
+		// unscannable items are simply absent from the pack; the warnings
+		// below already say why, and packing never deletes anything.
+		items, _, warns, err := scan.Claude(flagClaudeDir, settings.KeyOverrides{})
 		if err != nil {
 			return err
 		}

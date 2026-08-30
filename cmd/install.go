@@ -46,12 +46,19 @@ var installCmd = &cobra.Command{
 				}
 			}
 		}
-		local, warns, err := scan.Claude(flagClaudeDir, settings.KeyOverrides{Include: settingNames})
+		local, unscannable, warns, err := scan.Claude(flagClaudeDir, settings.KeyOverrides{Include: settingNames})
 		if err != nil {
 			return err
 		}
 		for _, w := range warns {
 			fmt.Println("warning:", w)
+		}
+		// An unscannable local item would look absent and be silently
+		// overwritten as a "fresh" install. Refuse instead of clobbering.
+		for id := range man.Items {
+			if scan.Unscannable(id, unscannable) {
+				return fmt.Errorf("local item %s exists but could not be read — fix it (see warnings) and retry", id)
+			}
 		}
 		ip := pack.BuildInstallPlan(man, contents, local, led, man.Name)
 

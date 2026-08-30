@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/daikazu/skill-sync/internal/item"
@@ -146,11 +147,23 @@ func Open(path string) (*Manifest, error) {
 	if man == nil {
 		return nil, fmt.Errorf("%s: no manifest.json — not a skillpack", path)
 	}
+	if !manifestFieldRe.MatchString(man.Name) {
+		return nil, fmt.Errorf("invalid package name %q in manifest", man.Name)
+	}
+	if !manifestFieldRe.MatchString(man.Version) {
+		return nil, fmt.Errorf("invalid package version %q in manifest", man.Version)
+	}
 	if man.Items == nil {
 		man.Items = map[item.ID]PackItem{}
 	}
 	return man, nil
 }
+
+// manifestFieldRe constrains Manifest.Name and Manifest.Version. The
+// name flows into renamed item IDs (RenamedID) and thus filesystem
+// paths under ~/.claude; a hostile name like "/../../../tmp/evil" must
+// never get that far.
+var manifestFieldRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 func Extract(path, destDir string) error {
 	return eachEntry(path, func(hdr *tar.Header, r io.Reader) error {
@@ -188,7 +201,9 @@ func Load(path, tmpDir string) (*Manifest, map[item.ID]scan.Scanned, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	all, _, err := scan.Repo(tmpDir)
+	// unscannable entries are absent from the scan; any manifest item
+	// affected fails the "pack is missing item" check below.
+	all, _, _, err := scan.Repo(tmpDir)
 	if err != nil {
 		return nil, nil, err
 	}

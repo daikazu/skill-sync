@@ -21,7 +21,7 @@ var packagesCmd = &cobra.Command{
 			fmt.Println("no packages installed")
 			return nil
 		}
-		local, _, err := scan.Claude(flagClaudeDir, settings.KeyOverrides{})
+		local, unscannable, _, err := scan.Claude(flagClaudeDir, settings.KeyOverrides{})
 		if err != nil {
 			return err
 		}
@@ -29,7 +29,9 @@ var packagesCmd = &cobra.Command{
 			fmt.Printf("%s %s (%d items)\n", name, rec.Version, len(rec.Items))
 			for id, h := range rec.Items {
 				marker := ""
-				if loc, ok := local[id]; !ok {
+				if scan.Unscannable(id, unscannable) {
+					marker = " (unreadable)"
+				} else if loc, ok := local[id]; !ok {
 					marker = " (missing)"
 				} else if loc.Hash != h {
 					marker = " (modified)"

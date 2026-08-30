@@ -36,8 +36,8 @@ func change(id string, st classify.State, act plan.Action) plan.Change {
 
 func TestApplyPullPushDelete(t *testing.T) {
 	a, claude, repoDir := setup(t)
-	local, _, _ := scan.Claude(claude, settings.KeyOverrides{})
-	remote, _, _ := scan.Repo(repoDir)
+	local, _, _, _ := scan.Claude(claude, settings.KeyOverrides{})
+	remote, _, _, _ := scan.Repo(repoDir)
 
 	changes := []plan.Change{
 		change("skill/remote-skill", classify.NewRemote, plan.ActPull),
@@ -72,8 +72,8 @@ func TestApplyPullPushDelete(t *testing.T) {
 		change("skill/remote-skill", classify.DeletedRemote, plan.ActDeleteLocal),
 		change("skill/local-skill", classify.DeletedLocal, plan.ActDeleteRemote),
 	}
-	local2, _, _ := scan.Claude(claude, settings.KeyOverrides{})
-	remote2, _, _ := scan.Repo(repoDir)
+	local2, _, _, _ := scan.Claude(claude, settings.KeyOverrides{})
+	remote2, _, _, _ := scan.Repo(repoDir)
 	base2, err := a.Apply(del, local2, remote2)
 	if err != nil {
 		t.Fatal(err)
@@ -91,8 +91,8 @@ func TestApplyPullPushDelete(t *testing.T) {
 
 func TestSnapshotAndRestore(t *testing.T) {
 	a, claude, repoDir := setup(t)
-	local, _, _ := scan.Claude(claude, settings.KeyOverrides{})
-	remote, _, _ := scan.Repo(repoDir)
+	local, _, _, _ := scan.Claude(claude, settings.KeyOverrides{})
+	remote, _, _, _ := scan.Repo(repoDir)
 
 	// local-skill will be deleted locally; settings.json will change
 	changes := []plan.Change{
@@ -138,7 +138,7 @@ func TestSnapshotEmptyWhenNoLocalChanges(t *testing.T) {
 
 func TestApplyFailureDoesNotRecordBaseHash(t *testing.T) {
 	a, claude, _ := setup(t)
-	local, _, _ := scan.Claude(claude, settings.KeyOverrides{})
+	local, _, _, _ := scan.Claude(claude, settings.KeyOverrides{})
 
 	// Create a remote with a skill pointing to a nonexistent directory
 	remote := map[item.ID]scan.Scanned{
