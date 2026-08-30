@@ -8,8 +8,8 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "skill-sync",
-	Short: "Sync Claude Code skills, agents, commands, rules, and settings between machines",
+	Use:          "skill-sync",
+	Short:        "Sync Claude Code skills, agents, commands, rules, and settings between machines",
 	SilenceUsage: true,
 }
 

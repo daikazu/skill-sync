@@ -5,6 +5,7 @@ package plan
 import (
 	"github.com/daikazu/skill-sync/internal/classify"
 	"github.com/daikazu/skill-sync/internal/item"
+	"github.com/daikazu/skill-sync/internal/scan"
 	"github.com/daikazu/skill-sync/internal/state"
 )
 
@@ -27,6 +28,8 @@ type Plan struct {
 	Auto      []Change
 	Conflicts []classify.Result
 	Skipped   []classify.Result
+	Local     map[item.ID]scan.Scanned // content lookup for review UIs
+	Remote    map[item.ID]scan.Scanned
 }
 
 var oneSided = map[classify.State]Action{

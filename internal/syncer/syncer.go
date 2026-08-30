@@ -97,6 +97,7 @@ func (s *Syncer) runOnce(resolve Resolver) (*Summary, error) {
 
 	results := classify.All(local, remote, dev.LastSynced)
 	p := plan.Build(results, cfg, ledger)
+	p.Local, p.Remote = local, remote
 	sum.SkippedItems = len(p.Skipped)
 
 	choices := map[item.ID]plan.Resolution{}
@@ -212,5 +213,6 @@ func (s *Syncer) Status() (*plan.Plan, []string, error) {
 	}
 	warns = append(warns, append(wl, wr...)...)
 	p := plan.Build(classify.All(local, remote, dev.LastSynced), cfg, ledger)
+	p.Local, p.Remote = local, remote
 	return &p, warns, nil
 }

@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/daikazu/skill-sync/internal/item"
 	"github.com/daikazu/skill-sync/internal/plan"
+	"github.com/daikazu/skill-sync/internal/tui"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var syncCmd = &cobra.Command{
@@ -14,10 +17,13 @@ var syncCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s := getSyncer()
 		resolver := func(p plan.Plan) (map[item.ID]plan.Resolution, bool, error) {
-			for _, c := range p.Conflicts {
-				fmt.Printf("conflict (unresolved, skipped): %s [%s]\n", c.ID, c.State)
+			if !term.IsTerminal(int(os.Stdout.Fd())) {
+				for _, c := range p.Conflicts {
+					fmt.Printf("conflict (unresolved, skipped): %s [%s]\n", c.ID, c.State)
+				}
+				return nil, true, nil
 			}
-			return nil, true, nil
+			return tui.RunReview(p.Conflicts, p.Local, p.Remote)
 		}
 		sum, err := s.Run(resolver)
 		if err != nil {
