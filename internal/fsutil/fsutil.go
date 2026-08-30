@@ -34,14 +34,22 @@ func CopyFile(src, dst string) error {
 	return os.Chmod(dst, perm)
 }
 
-// CopyTree replaces dstDir with the regular files under srcDir.
+// CopyTree replaces dstDir with the regular files under srcDir. VCS
+// metadata subtrees (.git, .svn, .hg) are excluded: they're
+// device-local history, not shareable content.
 func CopyTree(srcDir, dstDir string) error {
 	if err := os.RemoveAll(dstDir); err != nil {
 		return err
 	}
 	return filepath.WalkDir(srcDir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() {
+		if err != nil {
 			return err
+		}
+		if d.IsDir() && isVCSDir(d.Name()) {
+			return fs.SkipDir
+		}
+		if !d.Type().IsRegular() {
+			return nil
 		}
 		rel, err := filepath.Rel(srcDir, p)
 		if err != nil {
@@ -49,4 +57,14 @@ func CopyTree(srcDir, dstDir string) error {
 		}
 		return CopyFile(p, filepath.Join(dstDir, rel))
 	})
+}
+
+// isVCSDir reports whether name is a version-control metadata directory
+// that should never be treated as shareable item content.
+func isVCSDir(name string) bool {
+	switch name {
+	case ".git", ".svn", ".hg":
+		return true
+	}
+	return false
 }

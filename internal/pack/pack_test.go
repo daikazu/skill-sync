@@ -70,6 +70,70 @@ func TestExtractRejectsTraversal(t *testing.T) {
 	}
 }
 
+// singleEntryPack writes a .skillpack containing exactly one tar entry,
+// for exercising Extract's per-entry validation.
+func singleEntryPack(t *testing.T, hdr tar.Header, body []byte) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "evil.skillpack")
+	f, err := os.Create(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	hdr.Size = int64(len(body))
+	if err := tw.WriteHeader(&hdr); err != nil {
+		t.Fatal(err)
+	}
+	if len(body) > 0 {
+		if _, err := tw.Write(body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestExtractRejectsAbsolutePath(t *testing.T) {
+	p := singleEntryPack(t, tar.Header{Name: "/etc/evil", Mode: 0o644, Typeflag: tar.TypeReg}, []byte("owned"))
+	if err := Extract(p, t.TempDir()); err == nil {
+		t.Fatal("absolute path entry must be rejected")
+	}
+}
+
+func TestExtractRejectsSymlink(t *testing.T) {
+	p := singleEntryPack(t, tar.Header{
+		Name: "link", Linkname: "../../etc/passwd", Mode: 0o644, Typeflag: tar.TypeSymlink,
+	}, nil)
+	if err := Extract(p, t.TempDir()); err == nil {
+		t.Fatal("symlink entry must be rejected")
+	}
+}
+
+func TestExtractRejectsHardlink(t *testing.T) {
+	p := singleEntryPack(t, tar.Header{
+		Name: "hardlink", Linkname: "somefile", Mode: 0o644, Typeflag: tar.TypeLink,
+	}, nil)
+	if err := Extract(p, t.TempDir()); err == nil {
+		t.Fatal("hardlink entry must be rejected")
+	}
+}
+
+func TestExtractRejectsTraversalDir(t *testing.T) {
+	p := singleEntryPack(t, tar.Header{Name: "../../evil-dir", Mode: 0o755, Typeflag: tar.TypeDir}, nil)
+	if err := Extract(p, t.TempDir()); err == nil {
+		t.Fatal("traversal dir entry must be rejected")
+	}
+}
+
 func TestLoadDetectsTamper(t *testing.T) {
 	items := fixtureItems(t)
 	man := Manifest{Name: "p", Version: "1", Items: map[item.ID]PackItem{}}

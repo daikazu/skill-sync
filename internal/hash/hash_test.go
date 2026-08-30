@@ -50,6 +50,35 @@ func TestTreeDeterministicAndContentSensitive(t *testing.T) {
 	}
 }
 
+func TestTreeIgnoresVCSDirs(t *testing.T) {
+	mk := func(files map[string]string) string {
+		d := t.TempDir()
+		for rel, content := range files {
+			p := filepath.Join(d, rel)
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte(content), 0o644)
+		}
+		return d
+	}
+	clean := mk(map[string]string{"SKILL.md": "x", "ref/notes.md": "y"})
+	withGit := mk(map[string]string{
+		"SKILL.md": "x", "ref/notes.md": "y",
+		".git/config": "[core]\n\tbare = false\n",
+		".git/HEAD":   "ref: refs/heads/main\n",
+	})
+	hClean, err := Tree(clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hWithGit, err := Tree(withGit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hClean != hWithGit {
+		t.Fatal(".git/ contents must be excluded from the tree hash")
+	}
+}
+
 func TestJSONValueCanonical(t *testing.T) {
 	h1, _ := JSONValue(json.RawMessage(`{"b":1,"a":{"z":true,"y":"s"}}`))
 	h2, _ := JSONValue(json.RawMessage(`{ "a": {"y":"s","z":true}, "b": 1 }`))

@@ -4,6 +4,7 @@ package tui
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,8 +30,14 @@ func RenderContent(s scan.Scanned) string {
 	case item.TypeSkill:
 		var parts []string
 		filepath.WalkDir(s.Path, func(p string, d os.DirEntry, err error) error {
-			if err != nil || !d.Type().IsRegular() {
+			if err != nil {
 				return err
+			}
+			if d.IsDir() && isVCSDir(d.Name()) {
+				return fs.SkipDir
+			}
+			if !d.Type().IsRegular() {
+				return nil
 			}
 			rel, _ := filepath.Rel(s.Path, p)
 			b, _ := os.ReadFile(p)
@@ -46,4 +53,14 @@ func RenderContent(s scan.Scanned) string {
 		}
 		return string(b)
 	}
+}
+
+// isVCSDir reports whether name is a version-control metadata directory
+// that should never be treated as shareable item content.
+func isVCSDir(name string) bool {
+	switch name {
+	case ".git", ".svn", ".hg":
+		return true
+	}
+	return false
 }

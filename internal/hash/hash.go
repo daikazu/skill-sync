@@ -29,11 +29,16 @@ func File(path string) (string, error) {
 
 // Tree hashes a directory: sorted relative paths, each contributing
 // "<path>\n<filehash>\n". Regular files only; empty dirs are ignored.
+// VCS metadata subtrees (.git, .svn, .hg) are excluded: they're
+// device-local history, not shareable content.
 func Tree(root string) (string, error) {
 	var lines []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if d.IsDir() && isVCSDir(d.Name()) {
+			return fs.SkipDir
 		}
 		if !d.Type().IsRegular() {
 			return nil
@@ -55,6 +60,16 @@ func Tree(root string) (string, error) {
 	sort.Strings(lines)
 	sum := sha256.Sum256([]byte(strings.Join(lines, "")))
 	return hex.EncodeToString(sum[:]), nil
+}
+
+// isVCSDir reports whether name is a version-control metadata directory
+// that should never be treated as shareable item content.
+func isVCSDir(name string) bool {
+	switch name {
+	case ".git", ".svn", ".hg":
+		return true
+	}
+	return false
 }
 
 func JSONValue(raw json.RawMessage) (string, error) {

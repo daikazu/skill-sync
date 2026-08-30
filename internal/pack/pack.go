@@ -154,15 +154,15 @@ func Open(path string) (*Manifest, error) {
 
 func Extract(path, destDir string) error {
 	return eachEntry(path, func(hdr *tar.Header, r io.Reader) error {
+		rel, err := safeRel(hdr.Name)
+		if err != nil {
+			return err
+		}
 		if hdr.Typeflag == tar.TypeDir {
 			return nil
 		}
 		if hdr.Typeflag != tar.TypeReg {
 			return fmt.Errorf("unsafe entry %q: not a regular file", hdr.Name)
-		}
-		rel, err := safeRel(hdr.Name)
-		if err != nil {
-			return err
 		}
 		dst := filepath.Join(destDir, rel)
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
