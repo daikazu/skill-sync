@@ -135,3 +135,31 @@ func TestSnapshotEmptyWhenNoLocalChanges(t *testing.T) {
 		t.Fatalf("push-only plan must not snapshot: %q %v", snap, err)
 	}
 }
+
+func TestApplyFailureDoesNotRecordBaseHash(t *testing.T) {
+	a, claude, _ := setup(t)
+	local, _, _ := scan.Claude(claude, settings.KeyOverrides{})
+
+	// Create a remote with a skill pointing to a nonexistent directory
+	remote := map[item.ID]scan.Scanned{
+		item.ID("skill/missing-skill"): {
+			Path:  filepath.Join(t.TempDir(), "nonexistent"),
+			Hash:  "fakehash",
+			Value: json.RawMessage(nil),
+		},
+	}
+
+	changes := []plan.Change{
+		change("skill/missing-skill", classify.NewRemote, plan.ActPull),
+	}
+
+	base, err := a.Apply(changes, local, remote)
+	if err == nil {
+		t.Fatal("expected error for missing remote path")
+	}
+
+	// Verify base map does NOT contain the failed item
+	if _, ok := base[item.ID("skill/missing-skill")]; ok {
+		t.Fatal("base map must not record failed operation")
+	}
+}

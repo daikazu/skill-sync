@@ -43,16 +43,24 @@ func (a Applier) Apply(changes []plan.Change, local, remote map[item.ID]scan.Sca
 		switch c.Action {
 		case plan.ActPull:
 			err = a.writeLocal(id, remote[id], loadDoc)
-			base[id] = remote[id].Hash
+			if err == nil {
+				base[id] = remote[id].Hash
+			}
 		case plan.ActPush:
 			err = repo.WriteItem(a.RepoDir, local[id])
-			base[id] = local[id].Hash
+			if err == nil {
+				base[id] = local[id].Hash
+			}
 		case plan.ActDeleteLocal:
 			err = a.deleteLocal(id, loadDoc)
-			base[id] = ""
+			if err == nil {
+				base[id] = ""
+			}
 		case plan.ActDeleteRemote:
 			err = repo.DeleteItem(a.RepoDir, id)
-			base[id] = ""
+			if err == nil {
+				base[id] = ""
+			}
 		case plan.ActBaseOnly:
 			base[id] = local[id].Hash
 		}
