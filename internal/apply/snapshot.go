@@ -14,8 +14,8 @@ import (
 	"github.com/daikazu/skill-sync/internal/plan"
 )
 
-// localRelPath maps a filesystem item to its path inside the claude dir.
-func localRelPath(id item.ID) string {
+// LocalRelPath maps a filesystem item to its path inside the claude dir.
+func LocalRelPath(id item.ID) string {
 	switch id.Type() {
 	case item.TypeSkill:
 		return filepath.Join("skills", id.Name())
@@ -44,20 +44,26 @@ func (a Applier) Snapshot(changes []plan.Change) (string, error) {
 		case item.TypeSetting, item.TypePlugins:
 			needSettings = true
 		default:
-			rels = append(rels, localRelPath(c.Result.ID))
+			rels = append(rels, LocalRelPath(c.Result.ID))
 		}
 	}
 	if needSettings {
 		rels = append(rels, "settings.json")
 	}
+	return SnapshotPaths(a.ClaudeDir, a.BackupsDir, rels)
+}
+
+// SnapshotPaths copies the given claude-dir-relative paths into a new
+// timestamped dir under backupsDir. Returns "" if nothing existed to copy.
+func SnapshotPaths(claudeDir, backupsDir string, rels []string) (string, error) {
 	if len(rels) == 0 {
 		return "", nil
 	}
 	stamp := strings.ReplaceAll(time.Now().UTC().Format(time.RFC3339), ":", "-")
-	dir := filepath.Join(a.BackupsDir, stamp)
+	dir := filepath.Join(backupsDir, stamp)
 	copied := []string{}
 	for _, rel := range rels {
-		src := filepath.Join(a.ClaudeDir, rel)
+		src := filepath.Join(claudeDir, rel)
 		st, err := os.Stat(src)
 		if err != nil {
 			continue // nothing local to preserve

@@ -79,9 +79,9 @@ func (a Applier) Apply(changes []plan.Change, local, remote map[item.ID]scan.Sca
 func (a Applier) writeLocal(id item.ID, src scan.Scanned, loadDoc func() (*settings.Doc, error)) error {
 	switch id.Type() {
 	case item.TypeSkill:
-		return fsutil.CopyTree(src.Path, filepath.Join(a.ClaudeDir, localRelPath(id)))
+		return fsutil.CopyTree(src.Path, filepath.Join(a.ClaudeDir, LocalRelPath(id)))
 	case item.TypeAgent, item.TypeCommand, item.TypeRules:
-		return fsutil.CopyFile(src.Path, filepath.Join(a.ClaudeDir, localRelPath(id)))
+		return fsutil.CopyFile(src.Path, filepath.Join(a.ClaudeDir, LocalRelPath(id)))
 	case item.TypeSetting:
 		d, err := loadDoc()
 		if err != nil {
@@ -102,9 +102,9 @@ func (a Applier) writeLocal(id item.ID, src scan.Scanned, loadDoc func() (*setti
 func (a Applier) deleteLocal(id item.ID, loadDoc func() (*settings.Doc, error)) error {
 	switch id.Type() {
 	case item.TypeSkill:
-		return os.RemoveAll(filepath.Join(a.ClaudeDir, localRelPath(id)))
+		return os.RemoveAll(filepath.Join(a.ClaudeDir, LocalRelPath(id)))
 	case item.TypeAgent, item.TypeCommand, item.TypeRules:
-		err := os.Remove(filepath.Join(a.ClaudeDir, localRelPath(id)))
+		err := os.Remove(filepath.Join(a.ClaudeDir, LocalRelPath(id)))
 		if os.IsNotExist(err) {
 			return nil
 		}
