@@ -105,8 +105,12 @@ func gitRun(dir string, args ...string) (string, error) {
 	}
 	// Force English output so the substring checks for push rejection and
 	// empty-remote work on every locale, and fail fast instead of hanging
-	// on an interactive credential prompt.
-	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "GIT_TERMINAL_PROMPT=0")
+	// on an interactive credential prompt. The identity covers every
+	// commit-creating operation (including pull --rebase) on machines
+	// with no git config, such as CI runners.
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "GIT_TERMINAL_PROMPT=0",
+		"GIT_AUTHOR_NAME=skill-sync", "GIT_AUTHOR_EMAIL=skill-sync@localhost",
+		"GIT_COMMITTER_NAME=skill-sync", "GIT_COMMITTER_EMAIL=skill-sync@localhost")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("git %s: %w\n%s", args[0], err, out)
